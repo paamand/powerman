@@ -6,7 +6,6 @@ import 'game_state.dart';
 import 'game_engine.dart';
 import 'game_painter.dart';
 import 'player_control.dart';
-import 'constants.dart';
 
 class GameScreen extends StatefulWidget {
   final int numPlayers;
@@ -152,7 +151,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Widget _buildGameCanvas() {
     return RepaintBoundary(
       child: CustomPaint(
-        painter: GamePainter(_state, _animTime),
+        painter: GamePainter(_state, _animTime, widget.numPlayers),
         child: const SizedBox.expand(),
       ),
     );
@@ -225,7 +224,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           flex: 2,
           child: PlayerControlArea(
             playerId: 1,
-            rotationDeg: 180,
+            playerColor: GamePainter.kPlayerColors[1],
             onMove: _onMove,
             onBomb: _onBomb,
             onSuperWeapon: _onSuperWeapon,
@@ -246,7 +245,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           flex: 2,
           child: PlayerControlArea(
             playerId: 0,
-            rotationDeg: 0,
+            playerColor: GamePainter.kPlayerColors[0],
             onMove: _onMove,
             onBomb: _onBomb,
             onSuperWeapon: _onSuperWeapon,
@@ -286,7 +285,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           height: topBotH,
           child: PlayerControlArea(
             playerId: 0,
-            rotationDeg: 0,
+            playerColor: GamePainter.kPlayerColors[0],
             onMove: _onMove,
             onBomb: _onBomb,
             onSuperWeapon: _onSuperWeapon,
@@ -301,14 +300,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           height: topBotH,
           child: PlayerControlArea(
             playerId: 1,
-            rotationDeg: 180,
+            playerColor: GamePainter.kPlayerColors[1],
             onMove: _onMove,
             onBomb: _onBomb,
             onSuperWeapon: _onSuperWeapon,
             label: 'P2  TAP=BOMB  HOLD=SUPER',
           ),
         ),
-        // P3 - left strip (90°: player sits on left, "up" = toward game)
+        // P3 - left strip
         Positioned(
           top: 0,
           bottom: 0,
@@ -316,14 +315,14 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           width: sideW,
           child: PlayerControlArea(
             playerId: 2,
-            rotationDeg: 90,
+            playerColor: GamePainter.kPlayerColors[2],
             onMove: _onMove,
             onBomb: _onBomb,
             onSuperWeapon: _onSuperWeapon,
             label: 'P3  TAP=BOMB',
           ),
         ),
-        // P4 - right strip (270°: player sits on right, "up" = toward game)
+        // P4 - right strip
         Positioned(
           top: 0,
           bottom: 0,
@@ -331,7 +330,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           width: sideW,
           child: PlayerControlArea(
             playerId: 3,
-            rotationDeg: 270,
+            playerColor: GamePainter.kPlayerColors[3],
             onMove: _onMove,
             onBomb: _onBomb,
             onSuperWeapon: _onSuperWeapon,

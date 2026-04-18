@@ -6,8 +6,20 @@ import 'constants.dart';
 class GamePainter extends CustomPainter {
   final GameState state;
   final double animTime;
+  final int numPlayers;
 
-  GamePainter(this.state, this.animTime);
+  GamePainter(this.state, this.animTime, this.numPlayers);
+
+  /// Rotation angle (radians) so each player sees their powerman upright.
+  /// 2P: P1(bottom)=π, P2(top)=0
+  /// 4P: P1(bottom)=π, P2(top)=0, P3(left)=-π/2, P4(right)=π/2
+  double _playerAngle(int id) {
+    if (numPlayers <= 2) {
+      return id == 0 ? pi : 0;
+    }
+    const angles = [pi, 0.0, -pi / 2, pi / 2];
+    return id < 4 ? angles[id] : 0;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -134,7 +146,7 @@ class GamePainter extends CustomPainter {
         final tp = TextPainter(
           text: TextSpan(
             text: _powerUpLetter(tile.powerUp!),
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -144,6 +156,28 @@ class GamePainter extends CustomPainter {
         );
         tp.layout();
         tp.paint(canvas, Offset(cx - tp.width / 2, cy - tp.height / 2));
+
+        // Lifetime progress bar along bottom of box
+        if (tile.powerUpTimer != null) {
+          final frac = (tile.powerUpTimer! / kPowerUpLifetime).clamp(0.0, 1.0);
+          final barW = kTileSize * 0.65;
+          final barH = 4.0;
+          final barX = cx - barW / 2;
+          final barY = cy + kTileSize * 0.3;
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(barX, barY, barW, barH), const Radius.circular(2)),
+            Paint()..color = Colors.black26,
+          );
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(barX, barY, barW * frac, barH),
+                const Radius.circular(2)),
+            Paint()
+              ..color = _powerUpColor(tile.powerUp!)
+              ..style = PaintingStyle.fill,
+          );
+        }
       }
     }
   }
@@ -215,6 +249,34 @@ class GamePainter extends CustomPainter {
         fusePaint,
       );
 
+      // Fuse arc (depletes as bomb ticks down, starts full)
+      final arcRadius = radius + 7;
+      final fuseProgress = (bomb.timer / kBombFuse).clamp(0.0, 1.0);
+      final arcBg = Paint()
+        ..color = const Color(0x33FFFFFF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round;
+      final arcFg = Paint()
+        ..color = bomb.timer < 1.0 ? const Color(0xFFFF4444) : const Color(0xFFFFDD00)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        Rect.fromCircle(center: Offset(cx, cy), radius: arcRadius),
+        -pi / 2,
+        2 * pi,
+        false,
+        arcBg,
+      );
+      canvas.drawArc(
+        Rect.fromCircle(center: Offset(cx, cy), radius: arcRadius),
+        -pi / 2,
+        2 * pi * fuseProgress,
+        false,
+        arcFg,
+      );
+
       // Super bomb marker
       if (bomb.isSuper) {
         final sPaint = Paint()
@@ -262,43 +324,49 @@ class GamePainter extends CustomPainter {
       final cx = p.position.x;
       final cy = p.position.y;
       final color = kPlayerColors[p.id];
+      final alpha = p.isGhost ? 0.45 : 1.0;
+      final angle = _playerAngle(p.id);
 
-      // Shield glow
+      // Shield glow (not rotated, always circular)
       if (p.hasShield) {
-        final shieldPaint = Paint()
-          ..color = const Color(0x883D85C8)
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(Offset(cx, cy), 22, shieldPaint);
+        canvas.drawCircle(
+          Offset(cx, cy),
+          22,
+          Paint()
+            ..color = const Color(0x883D85C8)
+            ..style = PaintingStyle.fill,
+        );
       }
 
-      // Ghost translucency
-      final alpha = p.isGhost ? 0.45 : 1.0;
+      // Rotate canvas around player center so character faces toward their seat
+      canvas.save();
+      canvas.translate(cx, cy);
+      canvas.rotate(angle);
 
-      // Body (circle)
-      final bodyPaint = Paint()
-        ..color = color.withOpacity(alpha)
-        ..style = PaintingStyle.fill;
-      final strokePaint = Paint()
-        ..color = Colors.black.withOpacity(alpha)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
+      // Body
+      canvas.drawCircle(Offset.zero, 16,
+          Paint()
+            ..color = color.withOpacity(alpha)
+            ..style = PaintingStyle.fill);
+      canvas.drawCircle(Offset.zero, 16,
+          Paint()
+            ..color = Colors.black.withOpacity(alpha)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2);
 
-      canvas.drawCircle(Offset(cx, cy), 16, bodyPaint);
-      canvas.drawCircle(Offset(cx, cy), 16, strokePaint);
-
-      // Eyes
+      // Eyes (in local frame — eyes always "above" center before rotation)
       final eyePaint = Paint()
         ..color = Colors.white.withOpacity(alpha)
         ..style = PaintingStyle.fill;
       final pupilPaint = Paint()
         ..color = Colors.black.withOpacity(alpha)
         ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(cx - 5, cy - 4), 4, eyePaint);
-      canvas.drawCircle(Offset(cx + 5, cy - 4), 4, eyePaint);
-      canvas.drawCircle(Offset(cx - 5, cy - 4), 2, pupilPaint);
-      canvas.drawCircle(Offset(cx + 5, cy - 4), 2, pupilPaint);
+      canvas.drawCircle(const Offset(-5, -4), 4, eyePaint);
+      canvas.drawCircle(const Offset(5, -4), 4, eyePaint);
+      canvas.drawCircle(const Offset(-5, -4), 2, pupilPaint);
+      canvas.drawCircle(const Offset(5, -4), 2, pupilPaint);
 
-      // Player label
+      // Player label below face
       final tp = TextPainter(
         text: TextSpan(
           text: 'P${p.id + 1}',
@@ -311,27 +379,75 @@ class GamePainter extends CustomPainter {
         textDirection: TextDirection.ltr,
       );
       tp.layout();
-      tp.paint(canvas, Offset(cx - tp.width / 2, cy + 18));
+      tp.paint(canvas, Offset(-tp.width / 2, 18));
 
-      // Speed indicator
-      if (p.hasSpeedBoost) {
-        _drawStatusIcon(canvas, cx - 16, cy - 28, '⚡', alpha);
-      }
-      if (p.isGhost) {
-        _drawStatusIcon(canvas, cx, cy - 28, '👻', alpha);
-      }
+      canvas.restore();
+
+      // Effect cooldown arcs (drawn un-rotated, around the player)
+      _drawEffectArcs(canvas, p, cx, cy);
     }
   }
 
-  void _drawStatusIcon(Canvas canvas, double x, double y, String icon, double alpha) {
-    final tp = TextPainter(
-      text: TextSpan(text: icon, style: TextStyle(fontSize: 12)),
-      textDirection: TextDirection.ltr,
-    );
-    tp.layout();
-    tp.paint(canvas, Offset(x - tp.width / 2, y - tp.height / 2));
+  /// Small cooldown arcs around the player for timed effects.
+  void _drawEffectArcs(Canvas canvas, PlayerState p, double cx, double cy) {
+    const arcR = 26.0;
+    const stroke = 3.5;
+    const gap = 0.15; // radians gap between arcs
+
+    // Layout: shield (top arc), speed (right arc), ghost (left arc)
+    // Each occupies a sector; only draw active ones
+    final effects = <_EffectArc>[];
+    if (p.hasShield)
+      effects.add(_EffectArc(
+          frac: (p.shieldTimer / kShieldDuration).clamp(0.0, 1.0),
+          color: const Color(0xFF3D85C8),
+          startAngle: -pi * 0.8));
+    if (p.hasSpeedBoost)
+      effects.add(_EffectArc(
+          frac: (p.speedBoostTimer / kSpeedBoostDuration).clamp(0.0, 1.0),
+          color: const Color(0xFF4ECDC4),
+          startAngle: -pi * 0.1));
+    if (p.isGhost)
+      effects.add(_EffectArc(
+          frac: (p.ghostTimer / kGhostDuration).clamp(0.0, 1.0),
+          color: const Color(0xFF95A5A6),
+          startAngle: pi * 0.6));
+
+    final sectorSize = effects.isEmpty ? 0.0 : (2 * pi - gap * effects.length) / effects.length;
+    for (int i = 0; i < effects.length; i++) {
+      final e = effects[i];
+      final bgPaint = Paint()
+        ..color = e.color.withOpacity(0.2)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round;
+      final fgPaint = Paint()
+        ..color = e.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+          Rect.fromCircle(center: Offset(cx, cy), radius: arcR),
+          e.startAngle,
+          sectorSize,
+          false,
+          bgPaint);
+      canvas.drawArc(
+          Rect.fromCircle(center: Offset(cx, cy), radius: arcR),
+          e.startAngle,
+          sectorSize * e.frac,
+          false,
+          fgPaint);
+    }
   }
 
   @override
   bool shouldRepaint(GamePainter oldDelegate) => true;
+}
+
+class _EffectArc {
+  final double frac;
+  final Color color;
+  final double startAngle;
+  _EffectArc({required this.frac, required this.color, required this.startAngle});
 }

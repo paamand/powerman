@@ -3,10 +3,10 @@ import 'dart:math';
 
 /// A single player's control area overlay.
 /// Drag = move, tap = bomb, long-press = super weapon.
-/// [rotationDeg]: 0 = bottom (normal), 90 = left side, 180 = top, 270 = right side
+/// Direction is passed raw (no rotation) — drag "up" always moves up in game space.
 class PlayerControlArea extends StatefulWidget {
   final int playerId;
-  final int rotationDeg;
+  final Color playerColor;
   final void Function(int playerId, Offset direction) onMove;
   final void Function(int playerId) onBomb;
   final void Function(int playerId) onSuperWeapon;
@@ -15,7 +15,7 @@ class PlayerControlArea extends StatefulWidget {
   const PlayerControlArea({
     super.key,
     required this.playerId,
-    required this.rotationDeg,
+    required this.playerColor,
     required this.onMove,
     required this.onBomb,
     required this.onSuperWeapon,
@@ -49,7 +49,7 @@ class _PlayerControlAreaState extends State<PlayerControlArea> {
       },
       onPanUpdate: (details) {
         _dragCurrent = details.localPosition;
-        widget.onMove(widget.playerId, _applyRotation(_direction));
+        widget.onMove(widget.playerId, _direction);
       },
       onPanEnd: (_) {
         _isDragging = false;
@@ -62,24 +62,13 @@ class _PlayerControlAreaState extends State<PlayerControlArea> {
     );
   }
 
-  /// Rotate raw screen-space drag direction into game-space direction.
-  /// 0°: identity, 90°: left-side player, 180°: top player, 270°: right-side player
-  Offset _applyRotation(Offset dir) {
-    switch (widget.rotationDeg) {
-      case 90:  return Offset(dir.dy, -dir.dx);  // left side
-      case 180: return Offset(-dir.dx, -dir.dy); // top (opposite)
-      case 270: return Offset(-dir.dy, dir.dx);  // right side
-      default:  return dir;                      // bottom (normal)
-    }
-  }
-
   Widget _buildVisual() {
     return CustomPaint(
       painter: _ControlAreaPainter(
         label: widget.label,
         direction: _direction,
         isDragging: _isDragging,
-        rotationDeg: widget.rotationDeg,
+        playerColor: widget.playerColor,
       ),
       child: const SizedBox.expand(),
     );
@@ -90,49 +79,43 @@ class _ControlAreaPainter extends CustomPainter {
   final String label;
   final Offset direction;
   final bool isDragging;
-  final int rotationDeg;
+  final Color playerColor;
 
   _ControlAreaPainter({
     required this.label,
     required this.direction,
     required this.isDragging,
-    required this.rotationDeg,
+    required this.playerColor,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final borderPaint = Paint()
-      ..color = const Color(0x33000000)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    // Background
     final bgPaint = Paint()
-      ..color = const Color(0x0A000000)
+      ..color = playerColor.withOpacity(0.06)
       ..style = PaintingStyle.fill;
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+
+    final borderPaint = Paint()
+      ..color = playerColor.withOpacity(0.7)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
     canvas.drawRect(
-        Rect.fromLTWH(0, 0, size.width, size.height).deflate(2), borderPaint);
+        Rect.fromLTWH(0, 0, size.width, size.height).deflate(1.5), borderPaint);
 
-    // Rotate canvas so all content appears upright for the player
-    canvas.save();
-    canvas.translate(size.width / 2, size.height / 2);
-    canvas.rotate(rotationDeg * pi / 180);
-    // Dimensions in rotated frame
-    final rw = rotationDeg == 90 || rotationDeg == 270 ? size.height : size.width;
-    final rh = rotationDeg == 90 || rotationDeg == 270 ? size.width : size.height;
+    final cx = size.width / 2;
+    final cy = size.height / 2;
 
-    // Direction arrow (in player's local frame — raw drag direction)
+    // Direction arrow (raw screen drag direction)
     if (isDragging && direction.distance > 0.1) {
-      final len = min(rw, rh) * 0.3;
+      final len = min(size.width, size.height) * 0.3;
       final arrowPaint = Paint()
-        ..color = const Color(0x88000000)
+        ..color = playerColor.withOpacity(0.6)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3
         ..strokeCap = StrokeCap.round;
       canvas.drawLine(
-        Offset.zero,
-        Offset(direction.dx * len, direction.dy * len),
+        Offset(cx, cy),
+        Offset(cx + direction.dx * len, cy + direction.dy * len),
         arrowPaint,
       );
     }
@@ -149,12 +132,11 @@ class _ControlAreaPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     );
-    tp.layout(maxWidth: rw * 0.9);
-    tp.paint(canvas, Offset(-tp.width / 2, rh * 0.3));
-    canvas.restore();
+    tp.layout(maxWidth: size.width * 0.9);
+    tp.paint(canvas, Offset(cx - tp.width / 2, cy - tp.height / 2));
   }
 
   @override
   bool shouldRepaint(_ControlAreaPainter old) =>
-      old.direction != direction || old.isDragging != isDragging;
+      old.direction != direction || old.isDragging != isDragging || old.playerColor != playerColor;
 }
