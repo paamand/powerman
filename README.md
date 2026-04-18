@@ -16,10 +16,13 @@ Also add a timer-icon (or progressbar style cooldown) to the effects with cooldo
 
 3. Show the control area with a border matching the player color.
 
-4. For 2 and 4 players the game layout should be the same with only exception that for 4-player the control area is split in halves.
+4. For 2 and 4 players the game layout should be the same with only exception that for 4-player the control area is split in halves.  
+Manual tweaks
+  - Changed the rotation of the powermen to match the orientation of the player
+  - Changed the spawn position to be closest to the control area
 
 5. Move the info-windows for each player to be close to the players control-area, rotated so that the player reads it (i.e. 180deg for player2 in 2-player mode and 180deg for player3 and player4 in 4-player mode)
 
-## Manual tweaks
-1. Changed the rotation of the powermen to match the orientation of the player
-2. Changed the spawn position to be closest to the control area
+6. Add a home button in the left side of the screen and an "game info" button on the right side. The button should be on top of the middle permanent wall.
+
+7. When a player is killed he should re-spawn after 5 seconds. The win-condition is 5 kills. Track the kills (points) in the HUD of each player.

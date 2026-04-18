@@ -44,6 +44,8 @@ class PlayerState {
   int id;
   Vector2 position; // pixel position (center)
   bool alive;
+  double respawnTimer; // counts down when dead; 0 = not pending respawn
+  int kills;
   int blastRadius;
   double speed;
   bool hasSpeedBoost;
@@ -59,8 +61,8 @@ class PlayerState {
   PlayerState({
     required this.id,
     required this.position,
-  })  : alive = true,
-        blastRadius = kDefaultBlastRadius,
+  })  : alive = true,        respawnTimer = 0,
+        kills = 0,        blastRadius = kDefaultBlastRadius,
         speed = kPlayerSpeed,
         hasSpeedBoost = false,
         speedBoostTimer = 0,
@@ -77,6 +79,20 @@ class PlayerState {
 
   void die() {
     alive = false;
+    respawnTimer = kRespawnDelay;
+    blastRadius = kDefaultBlastRadius;
+    hasSpeedBoost = false;
+    hasShield = false;
+    isGhost = false;
+    maxBombs = 1;
+    activeBombs = 0;
+    superWeapon = null;
+  }
+
+  void respawn(Vector2 spawnPos) {
+    alive = true;
+    respawnTimer = 0;
+    position = spawnPos;
     blastRadius = kDefaultBlastRadius;
     hasSpeedBoost = false;
     hasShield = false;
@@ -126,7 +142,7 @@ class GameState {
 
     // Fill interior non-permanent, non-corner-clearance tiles with wood
     const clearRadius = 2; // keep spawn areas clear
-    final spawnCells = _spawnPositions();
+    final spawnCells = spawnPositions();
 
     for (int r = 1; r < kGridRows - 1; r++) {
       for (int c = 1; c < kGridCols - 1; c++) {
@@ -145,7 +161,7 @@ class GameState {
     }
   }
 
-  List<Point<int>> _spawnPositions() {
+  List<Point<int>> spawnPositions() {
     if (numPlayers <= 2) {
       return [
         Point(kGridCols - 2, kGridRows - 2),
@@ -162,7 +178,7 @@ class GameState {
   }
 
   void _initPlayers() {
-    final spawns = _spawnPositions();
+    final spawns = spawnPositions();
     players = List.generate(numPlayers, (i) {
       final sp = spawns[i];
       return PlayerState(

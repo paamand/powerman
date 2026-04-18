@@ -160,11 +160,16 @@ class GameEngine {
       return e.lifetime <= 0;
     });
 
-    // Check game over
-    final alive = state.players.where((p) => p.alive).toList();
-    if (alive.length <= 1) {
-      state.gameOver = true;
-      state.winnerId = alive.isEmpty ? null : alive.first.id;
+    // Tick respawn timers
+    final spawns = state.spawnPositions();
+    for (final p in state.players) {
+      if (!p.alive && p.respawnTimer > 0) {
+        p.respawnTimer -= dt;
+        if (p.respawnTimer <= 0) {
+          final sp = spawns[p.id];
+          p.respawn(state.gridCenter(sp.x, sp.y));
+        }
+      }
     }
   }
 
@@ -177,7 +182,7 @@ class GameEngine {
     final cy = bomb.position.y.toInt();
 
     // Add explosion at center
-    _addExplosion(cx, cy);
+    _addExplosion(cx, cy, bomb.playerId);
 
     // Spread in 4 directions
     const dirs = [
@@ -199,14 +204,20 @@ class GameEngine {
 
         if (tile.type == TileType.permanent) break; // stop at permanent wall
 
-        _addExplosion(nx, ny);
+        _addExplosion(nx, ny, bomb.playerId);
 
         if (tile.type == TileType.wood) {
           tile.type = TileType.empty; // destroy wood
           // Maybe drop a power-up
-          if (_rng.nextDouble() < 0.2) {
-            tile.powerUp =
-                PowerUpType.values[_rng.nextInt(PowerUpType.values.length)];
+          if (_rng.nextDouble() < 0.5) {
+            const weighted = [
+              PowerUpType.bomb, PowerUpType.bomb, PowerUpType.bomb,
+              PowerUpType.fire, PowerUpType.fire, PowerUpType.fire,
+              PowerUpType.speed,
+              PowerUpType.shield,
+              PowerUpType.ghost,
+            ];
+            tile.powerUp = weighted[_rng.nextInt(weighted.length)];
             tile.powerUpTimer = kPowerUpLifetime;
           }
           if (!bomb.isSuper) break; // super bomb passes through
@@ -223,7 +234,7 @@ class GameEngine {
     }
   }
 
-  void _addExplosion(int x, int y) {
+  void _addExplosion(int x, int y, int killerId) {
     state.explosions.add(ExplosionCell(x, y, 0.5));
 
     // Check if players are hit
@@ -233,6 +244,15 @@ class GameEngine {
       if (cell.x == x && cell.y == y) {
         if (!p.hasShield) {
           p.die();
+          // Credit kill — not self-kill
+          if (killerId != p.id) {
+            state.players[killerId].kills++;
+            // Check win condition
+            if (state.players[killerId].kills >= kWinKills) {
+              state.gameOver = true;
+              state.winnerId = killerId;
+            }
+          }
         }
       }
     }

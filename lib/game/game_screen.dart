@@ -80,7 +80,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           title: const Text('Game Over!'),
           content: Text(
             _state.winnerId != null
-                ? 'Player ${_state.winnerId! + 1} wins!'
+                ? 'Player ${_state.winnerId! + 1} wins!\n(${_state.players[_state.winnerId!].kills} kills)'
                 : 'Draw!',
             style: const TextStyle(fontSize: 22),
           ),
@@ -155,6 +155,113 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildGameArea() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildGameCanvas(),
+        // Home button — left border wall, vertically centered
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 52,
+          child: Center(
+            child: _buildOverlayButton(
+              icon: Icons.home_outlined,
+              tooltip: 'Menu',
+              onTap: () {
+                _gameLoop?.cancel();
+                Navigator.of(context).pop();
+              },
+            ),
+          ),
+        ),
+        // Info button — right border wall, vertically centered
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 52,
+          child: Center(
+            child: _buildOverlayButton(
+              icon: Icons.info_outline,
+              tooltip: 'Info',
+              onTap: () => _showInfoDialog(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOverlayButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: const Color(0xCC1A1A1A),
+          border: Border.all(color: Colors.white24, width: 1),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Icon(icon, color: Colors.white70, size: 20),
+      ),
+    );
+  }
+
+  void _showInfoDialog() {
+    // Pause-ish: keep game loop running but show info
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('How to Play'),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('CONTROLS', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 4),
+              Text('DRAG   → Move your powerman'),
+              Text('TAP    → Drop a bomb'),
+              Text('HOLD   → Trigger super weapon'),
+              SizedBox(height: 12),
+              Text('POWER-UPS', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 4),
+              Text('🔥 Fire    — bigger blast radius (permanent)'),
+              Text('⚡ Speed   — faster movement (30s)'),
+              Text('🛡 Shield  — invincible (30s)'),
+              Text('💣 Bomb    — extra bomb slot (permanent)'),
+              Text('👻 Ghost   — walk through walls (30s)'),
+              SizedBox(height: 12),
+              Text('SUPER WEAPONS', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 4),
+              Text('Timed Bomb — long-press to detonate instantly'),
+              Text('Super Bomb — infinite blast, ignores wood walls'),
+              SizedBox(height: 12),
+              Text('BOMBS', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 4),
+              Text('Explode after 3s • Chain-explode other bombs'),
+              Text('Destroy wood walls • Kill any powerman in blast'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// HUD badge for a single player, placed inside their control strip.
   /// [flipped] rotates 180° so top-strip players can read it.
   Widget _buildPlayerHUDBadge(PlayerState p, {bool flipped = false}) {
@@ -178,10 +285,13 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             ),
           ),
           if (!p.alive)
-            const Text(' 💀', style: TextStyle(fontSize: 12))
+            Text(' 💀${p.respawnTimer > 0 ? ' ${p.respawnTimer.ceil()}s' : ''}',
+                style: const TextStyle(fontSize: 12, color: Colors.white))
           else ...[
             const SizedBox(width: 4),
-            Text('🔥${p.blastRadius}',
+            Text('⭐${p.kills}',
+                style: const TextStyle(fontSize: 11, color: Colors.amber)),
+            Text(' 🔥${p.blastRadius}',
                 style: const TextStyle(fontSize: 11, color: Colors.white)),
             Text(' 💣${p.maxBombs}',
                 style: const TextStyle(fontSize: 11, color: Colors.white)),
@@ -245,7 +355,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
         // Game area (no shared HUD — each player has their own in the strip)
         Expanded(
           flex: 5,
-          child: _buildGameCanvas(),
+          child: _buildGameArea(),
         ),
         // Bottom control strip — P1 (2P) or P1+P2 (4P), normal orientation
         Expanded(

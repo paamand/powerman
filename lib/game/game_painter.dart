@@ -327,12 +327,13 @@ class GamePainter extends CustomPainter {
 
   void _drawPlayers(Canvas canvas) {
     for (final p in state.players) {
-      if (!p.alive) continue;
+      if (!p.alive && p.respawnTimer <= 0) continue;
 
+      final isRespawning = !p.alive && p.respawnTimer > 0;
       final cx = p.position.x;
       final cy = p.position.y;
       final color = kPlayerColors[p.id];
-      final alpha = p.isGhost ? 0.45 : 1.0;
+      final alpha = (p.isGhost || isRespawning) ? 0.35 : 1.0;
       final angle = _playerAngle(p.id);
 
       // Shield glow (not rotated, always circular)
@@ -391,8 +392,27 @@ class GamePainter extends CustomPainter {
 
       canvas.restore();
 
+      // Respawn countdown overlay
+      if (isRespawning) {
+        final secs = p.respawnTimer.ceil().toString();
+        final tp = TextPainter(
+          text: TextSpan(
+            text: secs,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        tp.layout();
+        tp.paint(canvas, Offset(cx - tp.width / 2, cy - tp.height / 2));
+      }
+
       // Effect cooldown arcs (drawn un-rotated, around the player)
-      _drawEffectArcs(canvas, p, cx, cy);
+      if (!isRespawning) _drawEffectArcs(canvas, p, cx, cy);
     }
   }
 
