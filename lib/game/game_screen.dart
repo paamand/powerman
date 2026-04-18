@@ -133,7 +133,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   void _onSuperWeapon(int playerId) {
     // First check if player has timed bomb super-weapon (long-press triggers it)
     final p = _state.players[playerId];
-    if (p.superWeapon == SuperWeaponType.timedBomb) {
+    if (p.superWeapon == PickupType.timedBomb) {
       _engine.triggerTimedBombs(playerId);
     }
   }

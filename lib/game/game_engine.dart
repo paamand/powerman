@@ -77,8 +77,8 @@ class GameEngine {
       if (b.position.x == cell.x && b.position.y == cell.y) return false;
     }
 
-    bool isTimed = p.superWeapon == SuperWeaponType.timedBomb;
-    bool isSuper = p.superWeapon == SuperWeaponType.superBomb;
+    bool isTimed = p.superWeapon == PickupType.timedBomb;
+    bool isSuper = p.superWeapon == PickupType.superBomb;
     if (isSuper || isTimed) p.superWeapon = null;
 
     state.bombs.add(BombState(
@@ -211,11 +211,12 @@ class GameEngine {
           // Maybe drop a power-up
           if (_rng.nextDouble() < 0.5) {
             const weighted = [
-              PowerUpType.bomb, PowerUpType.bomb, PowerUpType.bomb,
-              PowerUpType.fire, PowerUpType.fire, PowerUpType.fire,
-              PowerUpType.speed,
-              PowerUpType.shield,
-              PowerUpType.ghost,
+              PickupType.bomb, PickupType.bomb,
+              PickupType.fire, PickupType.fire,
+              PickupType.speed,
+              PickupType.shield,
+              PickupType.ghost,
+              PickupType.superBomb,
             ];
             tile.powerUp = weighted[_rng.nextInt(weighted.length)];
             tile.powerUpTimer = kPowerUpLifetime;
@@ -276,25 +277,31 @@ class GameEngine {
     }
   }
 
-  void _applyPowerUp(PlayerState p, PowerUpType pu) {
+  void _applyPowerUp(PlayerState p, PickupType pu) {
     switch (pu) {
-      case PowerUpType.fire:
+      case PickupType.fire:
         p.blastRadius++;
         break;
-      case PowerUpType.speed:
+      case PickupType.speed:
         p.hasSpeedBoost = true;
         p.speedBoostTimer = kSpeedBoostDuration;
         break;
-      case PowerUpType.shield:
+      case PickupType.shield:
         p.hasShield = true;
         p.shieldTimer = kShieldDuration;
         break;
-      case PowerUpType.bomb:
+      case PickupType.bomb:
         p.maxBombs++;
         break;
-      case PowerUpType.ghost:
+      case PickupType.ghost:
         p.isGhost = true;
         p.ghostTimer = kGhostDuration;
+        break;
+      case PickupType.timedBomb:
+        p.superWeapon = PickupType.timedBomb;
+        break;
+      case PickupType.superBomb:
+        p.superWeapon = PickupType.superBomb;
         break;
     }
   }

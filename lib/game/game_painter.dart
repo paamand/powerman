@@ -150,14 +150,12 @@ class GamePainter extends CustomPainter {
         canvas.drawRRect(rrect, bgPaint);
         canvas.drawRRect(rrect, strokePaint);
 
-        // Draw icon letter
+        // Draw icon emoji
         final tp = TextPainter(
           text: TextSpan(
-            text: _powerUpLetter(tile.powerUp!),
+            text: _powerUpEmoji(tile.powerUp!),
             style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+              fontSize: 22,
             ),
           ),
           textDirection: TextDirection.ltr,
@@ -190,33 +188,41 @@ class GamePainter extends CustomPainter {
     }
   }
 
-  Color _powerUpColor(PowerUpType pu) {
+  Color _powerUpColor(PickupType pu) {
     switch (pu) {
-      case PowerUpType.fire:
+      case PickupType.fire:
         return const Color(0xFFE84545);
-      case PowerUpType.speed:
+      case PickupType.speed:
         return const Color(0xFF4ECDC4);
-      case PowerUpType.shield:
+      case PickupType.shield:
         return const Color(0xFF3D85C8);
-      case PowerUpType.bomb:
+      case PickupType.bomb:
         return const Color(0xFF9B59B6);
-      case PowerUpType.ghost:
+      case PickupType.ghost:
         return const Color(0xFF95A5A6);
+      case PickupType.timedBomb:
+        return const Color(0xFFE67E22);
+      case PickupType.superBomb:
+        return const Color(0xFFCC2200);
     }
   }
 
-  String _powerUpLetter(PowerUpType pu) {
+  String _powerUpEmoji(PickupType pu) {
     switch (pu) {
-      case PowerUpType.fire:
-        return 'F';
-      case PowerUpType.speed:
-        return 'S';
-      case PowerUpType.shield:
-        return 'Sh';
-      case PowerUpType.bomb:
-        return 'B';
-      case PowerUpType.ghost:
-        return 'G';
+      case PickupType.fire:
+        return '🔥';
+      case PickupType.speed:
+        return '⚡';
+      case PickupType.shield:
+        return '🛡';
+      case PickupType.bomb:
+        return '💣';
+      case PickupType.ghost:
+        return '👻';
+      case PickupType.timedBomb:
+        return '⏱';
+      case PickupType.superBomb:
+        return '💥';
     }
   }
 

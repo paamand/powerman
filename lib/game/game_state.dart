@@ -4,13 +4,11 @@ import 'constants.dart';
 
 enum TileType { empty, permanent, wood }
 
-enum PowerUpType { fire, speed, shield, bomb, ghost }
-
-enum SuperWeaponType { timedBomb, superBomb }
+enum PickupType { fire, speed, shield, bomb, ghost, timedBomb, superBomb }
 
 class GameTile {
   TileType type;
-  PowerUpType? powerUp;
+  PickupType? powerUp;
   double? powerUpTimer;
 
   GameTile(this.type);
@@ -56,7 +54,7 @@ class PlayerState {
   double ghostTimer;
   int maxBombs;
   int activeBombs;
-  SuperWeaponType? superWeapon;
+  PickupType? superWeapon;
 
   PlayerState({
     required this.id,
@@ -222,7 +220,15 @@ class GameState {
       }
       if (empties.isNotEmpty) {
         final cell = empties[_rng.nextInt(empties.length)];
-        grid[cell.y][cell.x].powerUp = PowerUpType.values[_rng.nextInt(PowerUpType.values.length)];
+        // Only spawn regular (non-weapon) pickups via the timed spawner
+        const regularPickups = [
+          PickupType.fire, PickupType.fire,
+          PickupType.speed,
+          PickupType.shield,
+          PickupType.bomb, PickupType.bomb,
+          PickupType.ghost,
+        ];
+        grid[cell.y][cell.x].powerUp = regularPickups[_rng.nextInt(regularPickups.length)];
         grid[cell.y][cell.x].powerUpTimer = kPowerUpLifetime;
       }
     }
