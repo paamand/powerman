@@ -91,12 +91,12 @@ class _ControlAreaPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final bgPaint = Paint()
-      ..color = playerColor.withOpacity(0.06)
+      ..color = playerColor.withValues(alpha:0.06)
       ..style = PaintingStyle.fill;
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
 
     final borderPaint = Paint()
-      ..color = playerColor.withOpacity(0.7)
+      ..color = playerColor.withValues(alpha:0.7)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.5;
     canvas.drawRect(
@@ -109,7 +109,7 @@ class _ControlAreaPainter extends CustomPainter {
     if (isDragging && direction.distance > 0.1) {
       final len = min(size.width, size.height) * 0.3;
       final arrowPaint = Paint()
-        ..color = playerColor.withOpacity(0.6)
+        ..color = playerColor.withValues(alpha:0.6)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3
         ..strokeCap = StrokeCap.round;

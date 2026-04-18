@@ -142,9 +142,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: widget.numPlayers <= 2
-          ? _buildTwoPlayerLayout()
-          : _buildFourPlayerLayout(),
+      body: _buildLayout(),
     );
   }
 
@@ -157,33 +155,16 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildHUD() {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        color: Colors.black54,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: List.generate(widget.numPlayers, (i) {
-            final p = _state.players[i];
-            return _buildPlayerHUD(p);
-          }),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlayerHUD(PlayerState p) {
+  /// HUD badge for a single player, placed inside their control strip.
+  /// [flipped] rotates 180° so top-strip players can read it.
+  Widget _buildPlayerHUDBadge(PlayerState p, {bool flipped = false}) {
     final color = GamePainter.kPlayerColors[p.id];
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    Widget badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
         border: Border.all(color: color, width: 1.5),
         borderRadius: BorderRadius.circular(4),
-        color: p.alive ? color.withOpacity(0.15) : Colors.transparent,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -193,7 +174,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             style: TextStyle(
               color: p.alive ? color : Colors.grey,
               fontWeight: FontWeight.bold,
-              fontSize: 12,
+              fontSize: 13,
             ),
           ),
           if (!p.alive)
@@ -201,141 +182,80 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
           else ...[
             const SizedBox(width: 4),
             Text('🔥${p.blastRadius}',
-                style: const TextStyle(fontSize: 10, color: Colors.white70)),
+                style: const TextStyle(fontSize: 11, color: Colors.white)),
             Text(' 💣${p.maxBombs}',
-                style: const TextStyle(fontSize: 10, color: Colors.white70)),
-            if (p.hasShield)
-              const Text(' 🛡', style: TextStyle(fontSize: 10)),
-            if (p.hasSpeedBoost)
-              const Text(' ⚡', style: TextStyle(fontSize: 10)),
-            if (p.isGhost)
-              const Text(' 👻', style: TextStyle(fontSize: 10)),
+                style: const TextStyle(fontSize: 11, color: Colors.white)),
+            if (p.hasShield) const Text(' 🛡', style: TextStyle(fontSize: 11)),
+            if (p.hasSpeedBoost) const Text(' ⚡', style: TextStyle(fontSize: 11)),
+            if (p.isGhost) const Text(' 👻', style: TextStyle(fontSize: 11)),
           ],
         ],
       ),
     );
+    if (flipped) {
+      badge = RotatedBox(quarterTurns: 2, child: badge);
+    }
+    return badge;
   }
 
-  Widget _buildTwoPlayerLayout() {
-    // P1 bottom (normal), P2 top (180° flipped)
-    return Column(
+  /// A control strip for one player with their HUD badge near the game edge.
+  /// [flipped]: true for top-strip players (badge at top of strip, rotated 180°).
+  Widget _buildControlStrip(int playerId, {bool flipped = false}) {
+    final p = _state.players[playerId];
+    // For top-strip (flipped): game edge is at the BOTTOM of the strip,
+    // badge is near the bottom so it's closest to game, but rotated 180° for readability.
+    // For bottom-strip (normal): game edge is at the TOP of the strip,
+    // badge is near the top.
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        Expanded(
-          flex: 2,
-          child: PlayerControlArea(
-            playerId: 1,
-            playerColor: GamePainter.kPlayerColors[1],
-            onMove: _onMove,
-            onBomb: _onBomb,
-            onSuperWeapon: _onSuperWeapon,
-            label: 'P2  TAP=BOMB  HOLD=SUPER',
-          ),
+        PlayerControlArea(
+          playerId: playerId,
+          playerColor: GamePainter.kPlayerColors[playerId],
+          onMove: _onMove,
+          onBomb: _onBomb,
+          onSuperWeapon: _onSuperWeapon,
+          label: 'P${playerId + 1}  TAP=BOMB  HOLD=SUPER',
         ),
-        Expanded(
-          flex: 5,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _buildGameCanvas(),
-              _buildHUD(),
-            ],
-          ),
-        ),
-        Expanded(
-          flex: 2,
-          child: PlayerControlArea(
-            playerId: 0,
-            playerColor: GamePainter.kPlayerColors[0],
-            onMove: _onMove,
-            onBomb: _onBomb,
-            onSuperWeapon: _onSuperWeapon,
-            label: 'P1  TAP=BOMB  HOLD=SUPER',
+        Align(
+          alignment: flipped ? Alignment.bottomCenter : Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: _buildPlayerHUDBadge(p, flipped: flipped),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildFourPlayerLayout() {
-    // P1 bottom, P2 top (180°), P3 left side (90°), P4 right side (270°)
-    const sideW = 130.0;  // left/right control strip width
-    const topBotH = 120.0; // top/bottom control strip height
-    return Stack(
+  Widget _buildLayout() {
+    final bool four = widget.numPlayers == 4;
+    return Column(
       children: [
-        Container(color: const Color(0xFF1A1A1A)),
-        // Game canvas in center (inset from all 4 sides)
-        Positioned(
-          top: topBotH,
-          bottom: topBotH,
-          left: sideW,
-          right: sideW,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _buildGameCanvas(),
-              _buildHUD(),
-            ],
-          ),
+        // Top control strip — players P2 (2P) or P3+P4 (4P), flipped 180°
+        Expanded(
+          flex: 2,
+          child: four
+              ? Row(children: [
+                  Expanded(child: _buildControlStrip(2, flipped: true)),
+                  Expanded(child: _buildControlStrip(3, flipped: true)),
+                ])
+              : _buildControlStrip(1, flipped: true),
         ),
-        // P1 - bottom strip (normal orientation)
-        Positioned(
-          bottom: 0,
-          left: sideW,
-          right: sideW,
-          height: topBotH,
-          child: PlayerControlArea(
-            playerId: 0,
-            playerColor: GamePainter.kPlayerColors[0],
-            onMove: _onMove,
-            onBomb: _onBomb,
-            onSuperWeapon: _onSuperWeapon,
-            label: 'P1  TAP=BOMB  HOLD=SUPER',
-          ),
+        // Game area (no shared HUD — each player has their own in the strip)
+        Expanded(
+          flex: 5,
+          child: _buildGameCanvas(),
         ),
-        // P2 - top strip (180° flipped)
-        Positioned(
-          top: 0,
-          left: sideW,
-          right: sideW,
-          height: topBotH,
-          child: PlayerControlArea(
-            playerId: 1,
-            playerColor: GamePainter.kPlayerColors[1],
-            onMove: _onMove,
-            onBomb: _onBomb,
-            onSuperWeapon: _onSuperWeapon,
-            label: 'P2  TAP=BOMB  HOLD=SUPER',
-          ),
-        ),
-        // P3 - left strip
-        Positioned(
-          top: 0,
-          bottom: 0,
-          left: 0,
-          width: sideW,
-          child: PlayerControlArea(
-            playerId: 2,
-            playerColor: GamePainter.kPlayerColors[2],
-            onMove: _onMove,
-            onBomb: _onBomb,
-            onSuperWeapon: _onSuperWeapon,
-            label: 'P3  TAP=BOMB',
-          ),
-        ),
-        // P4 - right strip
-        Positioned(
-          top: 0,
-          bottom: 0,
-          right: 0,
-          width: sideW,
-          child: PlayerControlArea(
-            playerId: 3,
-            playerColor: GamePainter.kPlayerColors[3],
-            onMove: _onMove,
-            onBomb: _onBomb,
-            onSuperWeapon: _onSuperWeapon,
-            label: 'P4  TAP=BOMB',
-          ),
+        // Bottom control strip — P1 (2P) or P1+P2 (4P), normal orientation
+        Expanded(
+          flex: 2,
+          child: four
+              ? Row(children: [
+                  Expanded(child: _buildControlStrip(0, flipped: false)),
+                  Expanded(child: _buildControlStrip(1, flipped: false)),
+                ])
+              : _buildControlStrip(0, flipped: false),
         ),
       ],
     );

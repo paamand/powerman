@@ -15,10 +15,18 @@ class GamePainter extends CustomPainter {
   /// 4P: P1(bottom)=π, P2(top)=0, P3(left)=-π/2, P4(right)=π/2
   double _playerAngle(int id) {
     if (numPlayers <= 2) {
-      return id == 0 ? pi : 0;
+      return id == 0 ? 0 : pi;
     }
-    const angles = [pi, 0.0, -pi / 2, pi / 2];
-    return id < 4 ? angles[id] : 0;
+    switch (id) {
+      case 0:
+        return pi/3; // bottom
+      case 1:
+        return -pi/3; // top
+      case 2:
+        return pi - pi / 3; // left
+      default:
+        return pi + pi / 3; // right
+    }
   }
 
   @override
@@ -128,10 +136,10 @@ class GamePainter extends CustomPainter {
         final _ = 14.0 + pulse; // pulse unused but kept for future
 
         final bgPaint = Paint()
-          ..color = _powerUpColor(tile.powerUp!).withOpacity(0.85)
+          ..color = _powerUpColor(tile.powerUp!).withValues(alpha:0.85)
           ..style = PaintingStyle.fill;
         final strokePaint = Paint()
-          ..color = _powerUpColor(tile.powerUp!).withOpacity(0.3)
+          ..color = _powerUpColor(tile.powerUp!).withValues(alpha:0.3)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5;
 
@@ -346,20 +354,20 @@ class GamePainter extends CustomPainter {
       // Body
       canvas.drawCircle(Offset.zero, 16,
           Paint()
-            ..color = color.withOpacity(alpha)
+            ..color = color.withValues(alpha:alpha)
             ..style = PaintingStyle.fill);
       canvas.drawCircle(Offset.zero, 16,
           Paint()
-            ..color = Colors.black.withOpacity(alpha)
+            ..color = Colors.black.withValues(alpha:alpha)
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2);
 
       // Eyes (in local frame — eyes always "above" center before rotation)
       final eyePaint = Paint()
-        ..color = Colors.white.withOpacity(alpha)
+        ..color = Colors.white.withValues(alpha:alpha)
         ..style = PaintingStyle.fill;
       final pupilPaint = Paint()
-        ..color = Colors.black.withOpacity(alpha)
+        ..color = Colors.black.withValues(alpha:alpha)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(const Offset(-5, -4), 4, eyePaint);
       canvas.drawCircle(const Offset(5, -4), 4, eyePaint);
@@ -371,7 +379,7 @@ class GamePainter extends CustomPainter {
         text: TextSpan(
           text: 'P${p.id + 1}',
           style: TextStyle(
-            color: Colors.white.withOpacity(alpha),
+            color: Colors.white.withValues(alpha:alpha),
             fontSize: 10,
             fontWeight: FontWeight.bold,
           ),
@@ -397,27 +405,30 @@ class GamePainter extends CustomPainter {
     // Layout: shield (top arc), speed (right arc), ghost (left arc)
     // Each occupies a sector; only draw active ones
     final effects = <_EffectArc>[];
-    if (p.hasShield)
+    if (p.hasShield) {
       effects.add(_EffectArc(
           frac: (p.shieldTimer / kShieldDuration).clamp(0.0, 1.0),
           color: const Color(0xFF3D85C8),
           startAngle: -pi * 0.8));
-    if (p.hasSpeedBoost)
+    }
+    if (p.hasSpeedBoost) {
       effects.add(_EffectArc(
           frac: (p.speedBoostTimer / kSpeedBoostDuration).clamp(0.0, 1.0),
           color: const Color(0xFF4ECDC4),
           startAngle: -pi * 0.1));
-    if (p.isGhost)
+    }
+    if (p.isGhost) {
       effects.add(_EffectArc(
           frac: (p.ghostTimer / kGhostDuration).clamp(0.0, 1.0),
           color: const Color(0xFF95A5A6),
           startAngle: pi * 0.6));
+    }
 
     final sectorSize = effects.isEmpty ? 0.0 : (2 * pi - gap * effects.length) / effects.length;
     for (int i = 0; i < effects.length; i++) {
       final e = effects[i];
       final bgPaint = Paint()
-        ..color = e.color.withOpacity(0.2)
+        ..color = e.color.withValues(alpha:0.2)
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke
         ..strokeCap = StrokeCap.round;

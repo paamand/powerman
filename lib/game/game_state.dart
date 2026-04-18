@@ -148,15 +148,15 @@ class GameState {
   List<Point<int>> _spawnPositions() {
     if (numPlayers <= 2) {
       return [
-        Point(1, 1),
         Point(kGridCols - 2, kGridRows - 2),
+        Point(1, 1),
       ];
     } else {
       return [
-        Point(1, 1),
-        Point(kGridCols - 2, 1),
         Point(1, kGridRows - 2),
         Point(kGridCols - 2, kGridRows - 2),
+        Point(1, 1),
+        Point(kGridCols - 2, 1),
       ];
     }
   }
