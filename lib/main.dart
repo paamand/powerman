@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'game/game_screen.dart';
@@ -39,6 +42,49 @@ class MenuScreen extends StatefulWidget {
 class _MenuScreenState extends State<MenuScreen> {
   bool _lanBusy = false;
   String? _lanStatus;
+  Timer? _discoveryTimer;
+  InternetAddress? _discoveredHost;
+  bool _discovering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startDiscoveryLoop();
+  }
+
+  @override
+  void dispose() {
+    _discoveryTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startDiscoveryLoop() {
+    _runDiscoveryScan();
+    _discoveryTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _runDiscoveryScan(),
+    );
+  }
+
+  Future<void> _runDiscoveryScan() async {
+    if (_discovering || _lanBusy) return;
+    _discovering = true;
+    try {
+      final host = await discoverLanHost(
+        timeout: const Duration(milliseconds: 1500),
+      );
+      if (!mounted) return;
+      if (host != _discoveredHost) {
+        setState(() {
+          _discoveredHost = host;
+        });
+      }
+    } catch (_) {
+      // Ignore discovery errors.
+    } finally {
+      _discovering = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,8 +118,8 @@ class _MenuScreenState extends State<MenuScreen> {
             _MenuButton(label: '4 Players', onTap: () => _startGame(4)),
             const SizedBox(height: 16),
             _MenuButton(
-              label: _lanBusy ? '...' : 'LAN',
-              onTap: _lanBusy ? () {} : _startLanGame,
+              label: _lanBusy ? '...' : (_discoveredHost != null ? 'JOIN' : 'LAN'),
+              onTap: _lanBusy ? () {} : _onLanTap,
             ),
             if (_lanStatus != null) ...[
               const SizedBox(height: 8),
@@ -131,30 +177,32 @@ class _MenuScreenState extends State<MenuScreen> {
     );
   }
 
-  Future<void> _startLanGame() async {
+  void _onLanTap() {
+    if (_discoveredHost != null) {
+      _joinLanGame(_discoveredHost!);
+    } else {
+      _hostLanGame();
+    }
+  }
+
+  Future<void> _hostLanGame() async {
+    _discoveryTimer?.cancel();
     setState(() {
       _lanBusy = true;
-      _lanStatus = 'Looking for LAN host...';
+      _lanStatus = 'Hosting LAN game...';
     });
 
     try {
-      final result = await joinOrHostLanGame();
+      final host = await LanHostServer.start(localPlayerId: 0);
       if (!mounted) return;
-
-      setState(() {
-        _lanStatus = result.isHost
-            ? 'No host found. Hosting LAN game.'
-            : 'Host found. Joining LAN game.';
-      });
 
       await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => GameScreen(
             numPlayers: 4,
-            lanHost: result.hostServer,
-            lanClient: result.clientConnection,
-            localPlayerId: result.localPlayerId,
+            lanHost: host,
+            localPlayerId: 0,
           ),
         ),
       );
@@ -168,6 +216,44 @@ class _MenuScreenState extends State<MenuScreen> {
         setState(() {
           _lanBusy = false;
         });
+        _startDiscoveryLoop();
+      }
+    }
+  }
+
+  Future<void> _joinLanGame(InternetAddress hostAddress) async {
+    _discoveryTimer?.cancel();
+    setState(() {
+      _lanBusy = true;
+      _lanStatus = 'Joining LAN game...';
+    });
+
+    try {
+      final client = await LanClientConnection.connect(hostAddress);
+      if (!mounted) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GameScreen(
+            numPlayers: 4,
+            lanClient: client,
+            localPlayerId: client.localPlayerId,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _lanStatus = 'Host unavailable. Try again.';
+        _discoveredHost = null;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _lanBusy = false;
+        });
+        _startDiscoveryLoop();
       }
     }
   }

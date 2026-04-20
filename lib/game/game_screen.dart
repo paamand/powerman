@@ -485,12 +485,12 @@ class _GameScreenState extends State<GameScreen>
           ),
         ),
         _buildOverlayButtonsLayer(),
-        Positioned(top: 14, left: 70, child: _buildPlayerHUDBadge(local)),
+        Positioned(top: 14, left: 70, child: _buildPlayerHUDBadge(local, showHostIcon: widget.isLanHost)),
       ],
     );
   }
 
-  Widget _buildPlayerHUDBadge(PlayerState p, {bool flipped = false}) {
+  Widget _buildPlayerHUDBadge(PlayerState p, {bool flipped = false, bool showHostIcon = false}) {
     final color = GamePainter.kPlayerColors[p.id];
     Widget badge = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -502,6 +502,10 @@ class _GameScreenState extends State<GameScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (showHostIcon) ...[
+            const Icon(Icons.wifi_tethering, color: Colors.white70, size: 14),
+            const SizedBox(width: 4),
+          ],
           Text(
             'P${p.id + 1}',
             style: TextStyle(

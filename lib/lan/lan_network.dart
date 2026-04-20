@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 const int kLanDiscoveryPort = 43111;
 const int kLanGamePort = 43112;
 const String _kDiscoverToken = 'POWERMAN_DISCOVER_V1';
+const String _kMulticastGroup = '239.255.77.77';
 
 class _AndroidLanBridge {
   static const MethodChannel _channel = MethodChannel('powerman/lan');
@@ -63,31 +64,20 @@ class LanBootstrapResult {
 }
 
 Future<LanBootstrapResult> joinOrHostLanGame() async {
-  await _AndroidLanBridge.acquireMulticastLock();
-
   final discoveredHost = await discoverLanHost(
     timeout: const Duration(milliseconds: 1200),
   );
   if (discoveredHost != null) {
     try {
       final client = await LanClientConnection.connect(discoveredHost);
-      await _AndroidLanBridge.releaseMulticastLock();
       return LanBootstrapResult.client(clientConnection: client);
     } catch (_) {
       // Fallback to hosting if the discovered host is no longer available.
     }
   }
 
-  try {
-    final host = await LanHostServer.start(
-      localPlayerId: 0,
-      holdsAndroidMulticastLock: Platform.isAndroid,
-    );
-    return LanBootstrapResult.host(hostServer: host);
-  } catch (_) {
-    await _AndroidLanBridge.releaseMulticastLock();
-    rethrow;
-  }
+  final host = await LanHostServer.start(localPlayerId: 0);
+  return LanBootstrapResult.host(hostServer: host);
 }
 
 Future<InternetAddress?> discoverLanHost({required Duration timeout}) async {
@@ -125,6 +115,12 @@ Future<InternetAddress?> discoverLanHost({required Duration timeout}) async {
       }
     });
 
+    // Send to multicast group (cross-platform) and broadcast (fallback)
+    socket.send(
+      utf8.encode(_kDiscoverToken),
+      InternetAddress(_kMulticastGroup),
+      kLanDiscoveryPort,
+    );
     socket.send(
       utf8.encode(_kDiscoverToken),
       InternetAddress('255.255.255.255'),
@@ -152,7 +148,6 @@ class LanHostServer {
 
   final ServerSocket _serverSocket;
   final RawDatagramSocket _discoverySocket;
-  final bool _holdsAndroidMulticastLock;
   final Map<Socket, int> _socketToPlayer = <Socket, int>{};
   final List<StreamSubscription> _socketSubscriptions = <StreamSubscription>[];
   bool _closed = false;
@@ -161,8 +156,7 @@ class LanHostServer {
     this._serverSocket,
     this._discoverySocket, {
     required this.localPlayerId,
-    required bool holdsAndroidMulticastLock,
-  }) : _holdsAndroidMulticastLock = holdsAndroidMulticastLock {
+  }) {
     connectedPlayerIds.add(localPlayerId);
     _listenForDiscovery();
     _listenForClients();
@@ -170,8 +164,8 @@ class LanHostServer {
 
   static Future<LanHostServer> start({
     required int localPlayerId,
-    bool holdsAndroidMulticastLock = false,
   }) async {
+    await _AndroidLanBridge.acquireMulticastLock();
     final server = await ServerSocket.bind(
       InternetAddress.anyIPv4,
       kLanGamePort,
@@ -183,11 +177,16 @@ class LanHostServer {
       reuseAddress: true,
       reusePort: true,
     );
+    discovery.broadcastEnabled = true;
+    try {
+      discovery.joinMulticast(InternetAddress(_kMulticastGroup));
+    } catch (_) {
+      // Best effort: multicast join may fail on some networks.
+    }
     return LanHostServer._(
       server,
       discovery,
       localPlayerId: localPlayerId,
-      holdsAndroidMulticastLock: holdsAndroidMulticastLock,
     );
   }
 
@@ -328,9 +327,7 @@ class LanHostServer {
     connectedPlayerIds.clear();
     await _serverSocket.close();
     _discoverySocket.close();
-    if (_holdsAndroidMulticastLock) {
-      await _AndroidLanBridge.releaseMulticastLock();
-    }
+    await _AndroidLanBridge.releaseMulticastLock();
   }
 }
 
