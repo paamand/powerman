@@ -38,6 +38,17 @@ class ExplosionCell {
   ExplosionCell(this.x, this.y, this.lifetime);
 }
 
+class EnemyState {
+  Vector2 position; // pixel center
+  Vector2 direction; // normalized cardinal direction
+  bool alive;
+  double dirChangeTimer;
+
+  EnemyState({required this.position, required this.direction})
+      : alive = true,
+        dirChangeTimer = 0;
+}
+
 class PlayerState {
   int id;
   Vector2 position; // pixel position (center)
@@ -52,6 +63,8 @@ class PlayerState {
   double shieldTimer;
   bool isGhost;
   double ghostTimer;
+  bool hasTimedBomb;
+  double timedBombTimer;
   int maxBombs;
   int activeBombs;
   PickupType? superWeapon;
@@ -68,6 +81,8 @@ class PlayerState {
         shieldTimer = 0,
         isGhost = false,
         ghostTimer = 0,
+        hasTimedBomb = false,
+        timedBombTimer = 0,
         maxBombs = 1,
         activeBombs = 0,
         superWeapon = null;
@@ -82,6 +97,8 @@ class PlayerState {
     hasSpeedBoost = false;
     hasShield = false;
     isGhost = false;
+    hasTimedBomb = false;
+    timedBombTimer = 0;
     maxBombs = 1;
     activeBombs = 0;
     superWeapon = null;
@@ -95,6 +112,8 @@ class PlayerState {
     hasSpeedBoost = false;
     hasShield = false;
     isGhost = false;
+    hasTimedBomb = false;
+    timedBombTimer = 0;
     maxBombs = 1;
     activeBombs = 0;
     superWeapon = null;
@@ -106,6 +125,7 @@ class GameState {
   List<PlayerState> players;
   List<BombState> bombs;
   List<ExplosionCell> explosions;
+  List<EnemyState> enemies;
   int numPlayers;
   bool gameOver;
   int? winnerId;
@@ -117,11 +137,13 @@ class GameState {
         players = [],
         bombs = [],
         explosions = [],
+        enemies = [],
         gameOver = false,
         winnerId = null,
         powerUpTimer = kPowerUpSpawnInterval {
     _initGrid();
     _initPlayers();
+    _initEnemies(count: kEnemyCount);
   }
 
   void _initGrid() {
@@ -129,6 +151,13 @@ class GameState {
       kGridRows,
       (r) => List.generate(kGridCols, (c) {
         if (r == 0 || r == kGridRows - 1 || c == 0 || c == kGridCols - 1) {
+          // Open teleporter corridors in the mid-point of each outer wall
+          if ((r == 0 || r == kGridRows - 1) && c == kTeleportCol) {
+            return GameTile(TileType.empty);
+          }
+          if ((c == 0 || c == kGridCols - 1) && r == kTeleportRow) {
+            return GameTile(TileType.empty);
+          }
           return GameTile(TileType.permanent);
         }
         if (r % 2 == 0 && c % 2 == 0) {
@@ -198,11 +227,53 @@ class GameState {
   }
 
   bool isSolid(int col, int row, {bool ghost = false}) {
-    if (col < 0 || col >= kGridCols || row < 0 || row >= kGridRows) return true;
+    if (col < 0 || col >= kGridCols) {
+      // Out-of-bounds left/right: passable only in the horizontal teleporter lane
+      return row != kTeleportRow;
+    }
+    if (row < 0 || row >= kGridRows) {
+      // Out-of-bounds top/bottom: passable only in the vertical teleporter lane
+      return col != kTeleportCol;
+    }
     final t = grid[row][col].type;
     if (t == TileType.permanent) return true;
     if (t == TileType.wood && !ghost) return true;
     return false;
+  }
+
+  void _initEnemies({required int count}) {
+    final spawnCells = spawnPositions();
+    const clearRadius = 3;
+    final candidates = <Point<int>>[];
+
+    for (int r = 1; r < kGridRows - 1; r++) {
+      for (int c = 1; c < kGridCols - 1; c++) {
+        if (grid[r][c].type != TileType.empty) continue;
+        bool nearSpawn = false;
+        for (final sp in spawnCells) {
+          if ((sp.x - c).abs() <= clearRadius && (sp.y - r).abs() <= clearRadius) {
+            nearSpawn = true;
+            break;
+          }
+        }
+        if (!nearSpawn) candidates.add(Point(c, r));
+      }
+    }
+
+    candidates.shuffle(_rng);
+    final take = min(count, candidates.length);
+    final cardinalDirs = [
+      [1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0],
+    ];
+
+    enemies = List.generate(take, (i) {
+      final cell = candidates[i];
+      final d = cardinalDirs[_rng.nextInt(4)];
+      return EnemyState(
+        position: Vector2(cell.x * kTileSize + kTileSize / 2, cell.y * kTileSize + kTileSize / 2),
+        direction: Vector2(d[0], d[1]),
+      );
+    });
   }
 
   void trySpawnPowerUp(double dt) {

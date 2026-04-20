@@ -47,12 +47,115 @@ class GamePainter extends CustomPainter {
 
     _drawBackground(canvas);
     _drawGrid(canvas);
+    _drawTeleporters(canvas);
     _drawPowerUps(canvas);
     _drawBombs(canvas);
     _drawExplosions(canvas);
+    _drawEnemies(canvas);
     _drawPlayers(canvas);
 
     canvas.restore();
+  }
+
+  void _drawTeleporters(Canvas canvas) {
+    // Four teleporter cells: mid-point of each outer wall
+    final cells = [
+      [kTeleportCol, 0],
+      [kTeleportCol, kGridRows - 1],
+      [0, kTeleportRow],
+      [kGridCols - 1, kTeleportRow],
+    ];
+
+    final pulse = sin(animTime * 3) * 0.12 + 0.88;
+
+    for (final cell in cells) {
+      final col = cell[0];
+      final row = cell[1];
+      final cx = col * kTileSize + kTileSize / 2;
+      final cy = row * kTileSize + kTileSize / 2;
+
+      // Outer glow
+      canvas.drawCircle(
+        Offset(cx, cy),
+        28 * pulse,
+        Paint()..color = Color.fromARGB((70 * pulse).round(), 138, 43, 226),
+      );
+      // Inner portal ring
+      canvas.drawCircle(
+        Offset(cx, cy),
+        18 * pulse,
+        Paint()
+          ..color = Color.fromARGB((180 * pulse).round(), 180, 100, 255)
+          ..style = PaintingStyle.fill,
+      );
+      // Bright core
+      canvas.drawCircle(
+        Offset(cx, cy),
+        8 * pulse,
+        Paint()..color = Colors.white.withValues(alpha: 0.9 * pulse),
+      );
+      // Arrow hinting direction
+      final isHorizontal = row == kTeleportRow;
+      final arrowPaint = Paint()
+        ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.7)
+        ..strokeWidth = 2
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+      if (isHorizontal) {
+        // left or right wall — arrows point inward
+        final dir = col == 0 ? 1.0 : -1.0;
+        canvas.drawLine(Offset(cx - 6 * dir, cy - 5), Offset(cx + 6 * dir, cy), arrowPaint);
+        canvas.drawLine(Offset(cx - 6 * dir, cy + 5), Offset(cx + 6 * dir, cy), arrowPaint);
+      } else {
+        // top or bottom wall — arrows point inward
+        final dir = row == 0 ? 1.0 : -1.0;
+        canvas.drawLine(Offset(cx - 5, cy - 6 * dir), Offset(cx, cy + 6 * dir), arrowPaint);
+        canvas.drawLine(Offset(cx + 5, cy - 6 * dir), Offset(cx, cy + 6 * dir), arrowPaint);
+      }
+    }
+  }
+
+  void _drawEnemies(Canvas canvas) {
+    for (final e in state.enemies) {
+      if (!e.alive) continue;
+
+      final cx = e.position.x;
+      final cy = e.position.y;
+
+      // Body
+      canvas.drawCircle(
+        Offset(cx, cy),
+        kEnemyRadius,
+        Paint()..color = const Color(0xFFCC2222),
+      );
+      canvas.drawCircle(
+        Offset(cx, cy),
+        kEnemyRadius,
+        Paint()
+          ..color = Colors.black
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+
+      // Eyes
+      canvas.drawCircle(Offset(cx - 4, cy - 3), 3,
+          Paint()..color = Colors.white);
+      canvas.drawCircle(Offset(cx + 4, cy - 3), 3,
+          Paint()..color = Colors.white);
+      canvas.drawCircle(Offset(cx - 4, cy - 3), 1.5,
+          Paint()..color = Colors.black);
+      canvas.drawCircle(Offset(cx + 4, cy - 3), 1.5,
+          Paint()..color = Colors.black);
+
+      // Angry brows
+      final brow = Paint()
+        ..color = Colors.black
+        ..strokeWidth = 1.8
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(Offset(cx - 7, cy - 7), Offset(cx - 1, cy - 5), brow);
+      canvas.drawLine(Offset(cx + 7, cy - 7), Offset(cx + 1, cy - 5), brow);
+    }
   }
 
   void _drawBackground(Canvas canvas) {

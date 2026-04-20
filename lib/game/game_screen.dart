@@ -242,7 +242,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               SizedBox(height: 12),
               Text('SUPER WEAPONS', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 4),
-              Text('Timed Bomb — long-press to detonate instantly'),
+              Text('Timed Bomb — tap to place (no auto-explode), tap again to detonate'),
               Text('Super Bomb — infinite blast, ignores wood walls'),
               SizedBox(height: 12),
               Text('BOMBS', style: TextStyle(fontWeight: FontWeight.bold)),
