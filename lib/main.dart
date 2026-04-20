@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'game/game_screen.dart';
+import 'lan/lan_network.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,8 +29,16 @@ class PowermanApp extends StatelessWidget {
   }
 }
 
-class MenuScreen extends StatelessWidget {
+class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
+
+  @override
+  State<MenuScreen> createState() => _MenuScreenState();
+}
+
+class _MenuScreenState extends State<MenuScreen> {
+  bool _lanBusy = false;
+  String? _lanStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -50,13 +59,29 @@ class MenuScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'iPad Multiplayer Battle',
-              style: TextStyle(fontSize: 14, color: Color(0xFF666666), letterSpacing: 2),
+              'Vibe-coded by Paamand',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF666666),
+                letterSpacing: 2,
+              ),
             ),
             const SizedBox(height: 48),
-            _MenuButton(label: '2 Players', onTap: () => _startGame(context, 2)),
+            _MenuButton(label: '2 Players', onTap: () => _startGame(2)),
             const SizedBox(height: 16),
-            _MenuButton(label: '4 Players', onTap: () => _startGame(context, 4)),
+            _MenuButton(label: '4 Players', onTap: () => _startGame(4)),
+            const SizedBox(height: 16),
+            _MenuButton(
+              label: _lanBusy ? '...' : 'LAN',
+              onTap: _lanBusy ? () {} : _startLanGame,
+            ),
+            if (_lanStatus != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _lanStatus!,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF666666)),
+              ),
+            ],
             const SizedBox(height: 48),
             Container(
               padding: const EdgeInsets.all(16),
@@ -67,15 +92,29 @@ class MenuScreen extends StatelessWidget {
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('HOW TO PLAY',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 2)),
+                  Text(
+                    'HOW TO PLAY',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      letterSpacing: 2,
+                    ),
+                  ),
                   SizedBox(height: 8),
-                  Text('DRAG  →  Move your powerman', style: TextStyle(fontSize: 12)),
+                  Text(
+                    'DRAG  →  Move your powerman',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   Text('TAP   →  Drop bomb', style: TextStyle(fontSize: 12)),
-                  Text('HOLD  →  Trigger super weapon', style: TextStyle(fontSize: 12)),
+                  Text(
+                    'HOLD  →  Trigger super weapon',
+                    style: TextStyle(fontSize: 12),
+                  ),
                   SizedBox(height: 4),
-                  Text('Collect crates for power-ups!',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF666666))),
+                  Text(
+                    'Collect crates for power-ups!',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF666666)),
+                  ),
                 ],
               ),
             ),
@@ -85,11 +124,52 @@ class MenuScreen extends StatelessWidget {
     );
   }
 
-  void _startGame(BuildContext context, int numPlayers) {
+  void _startGame(int numPlayers) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => GameScreen(numPlayers: numPlayers)),
     );
+  }
+
+  Future<void> _startLanGame() async {
+    setState(() {
+      _lanBusy = true;
+      _lanStatus = 'Looking for LAN host...';
+    });
+
+    try {
+      final result = await joinOrHostLanGame();
+      if (!mounted) return;
+
+      setState(() {
+        _lanStatus = result.isHost
+            ? 'No host found. Hosting LAN game.'
+            : 'Host found. Joining LAN game.';
+      });
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GameScreen(
+            numPlayers: 4,
+            lanHost: result.hostServer,
+            lanClient: result.clientConnection,
+            localPlayerId: result.localPlayerId,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _lanStatus = 'LAN failed. Please try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _lanBusy = false;
+        });
+      }
+    }
   }
 }
 
