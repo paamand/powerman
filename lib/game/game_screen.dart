@@ -390,12 +390,10 @@ class _GameScreenState extends State<GameScreen>
         ? const [
             Text('DRAG   -> Move your powerman (full battleground)'),
             Text('TAP    -> Drop a bomb'),
-            Text('HOLD   -> Trigger super weapon'),
           ]
         : const [
             Text('DRAG   -> Move your powerman'),
             Text('TAP    -> Drop a bomb'),
-            Text('HOLD   -> Trigger super weapon'),
           ];
 
     showDialog(

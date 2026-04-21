@@ -65,7 +65,7 @@ class LanBootstrapResult {
 
 Future<LanBootstrapResult> joinOrHostLanGame() async {
   final discoveredHost = await discoverLanHost(
-    timeout: const Duration(milliseconds: 1200),
+    timeout: const Duration(seconds: 3),
   );
   if (discoveredHost != null) {
     try {
@@ -82,57 +82,211 @@ Future<LanBootstrapResult> joinOrHostLanGame() async {
 
 Future<InternetAddress?> discoverLanHost({required Duration timeout}) async {
   RawDatagramSocket? socket;
+  Timer? probeTimer;
   try {
+    // Bind to the discovery port so we receive host beacon broadcasts.
     socket = await RawDatagramSocket.bind(
       InternetAddress.anyIPv4,
-      0,
+      kLanDiscoveryPort,
       reuseAddress: true,
       reusePort: true,
     );
     socket.broadcastEnabled = true;
+    // Join multicast group to receive host beacons sent there.
+    try {
+      socket.joinMulticast(InternetAddress(_kMulticastGroup));
+    } catch (_) {}
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      );
+      for (final iface in interfaces) {
+        try {
+          socket.joinMulticast(InternetAddress(_kMulticastGroup), iface);
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    // Collect local IPs to filter out self-discovery.
+    final localAddresses = await _collectLocalAddresses();
 
     final completer = Completer<InternetAddress?>();
     late StreamSubscription<RawSocketEvent> sub;
     sub = socket.listen((event) {
       if (event == RawSocketEvent.read) {
-        final datagram = socket!.receive();
-        if (datagram == null) return;
-        String text;
-        try {
-          text = utf8.decode(datagram.data);
-        } catch (_) {
-          return;
-        }
-        dynamic json;
-        try {
-          json = jsonDecode(text);
-        } catch (_) {
-          return;
-        }
-        if (json is Map<String, dynamic> && json['t'] == 'host') {
-          if (!completer.isCompleted) completer.complete(datagram.address);
+        Datagram? datagram;
+        while ((datagram = socket!.receive()) != null) {
+          // Ignore packets from ourselves.
+          if (localAddresses.contains(datagram!.address.address)) continue;
+          String text;
+          try {
+            text = utf8.decode(datagram.data);
+          } catch (_) {
+            continue;
+          }
+          dynamic json;
+          try {
+            json = jsonDecode(text);
+          } catch (_) {
+            continue;
+          }
+          if (json is Map<String, dynamic> && json['t'] == 'host') {
+            if (!completer.isCompleted) completer.complete(datagram.address);
+            return;
+          }
         }
       }
     });
 
-    // Send to multicast group (cross-platform) and broadcast (fallback)
-    socket.send(
-      utf8.encode(_kDiscoverToken),
-      InternetAddress(_kMulticastGroup),
-      kLanDiscoveryPort,
-    );
-    socket.send(
-      utf8.encode(_kDiscoverToken),
-      InternetAddress('255.255.255.255'),
-      kLanDiscoveryPort,
+    // Also send active probes (belt-and-suspenders: works when host can
+    // receive our broadcast even if we can't receive theirs).
+    final broadcastTargets = await _collectBroadcastTargets();
+    final probe = utf8.encode(_kDiscoverToken);
+
+    void sendProbes() {
+      if (completer.isCompleted) return;
+      for (final target in broadcastTargets) {
+        try {
+          socket!.send(probe, target, kLanDiscoveryPort);
+        } catch (_) {}
+      }
+    }
+
+    sendProbes();
+    probeTimer = Timer.periodic(
+      const Duration(milliseconds: 300),
+      (_) => sendProbes(),
     );
 
     final host = await completer.future.timeout(timeout, onTimeout: () => null);
     await sub.cancel();
     return host;
   } finally {
+    probeTimer?.cancel();
     socket?.close();
   }
+}
+
+Future<InternetAddress?> discoverLanHostWithTcpFallback({
+  required Duration udpTimeout,
+  required Duration tcpScanTimeout,
+}) async {
+  final viaUdp = await discoverLanHost(timeout: udpTimeout);
+  if (viaUdp != null) return viaUdp;
+  return _scanForHostByTcp(timeout: tcpScanTimeout);
+}
+
+/// Fast /24 TCP probe fallback for environments where UDP discovery is blocked.
+Future<InternetAddress?> _scanForHostByTcp({required Duration timeout}) async {
+  final localAddresses = await _collectLocalAddresses();
+  final prefixes = <String>{};
+  for (final addr in localAddresses) {
+    if (addr.startsWith('127.')) continue;
+    final parts = addr.split('.');
+    if (parts.length == 4) {
+      prefixes.add('${parts[0]}.${parts[1]}.${parts[2]}');
+    }
+  }
+
+  if (prefixes.isEmpty) return null;
+
+  final candidates = <String>[];
+  for (final prefix in prefixes) {
+    for (int host = 1; host <= 254; host++) {
+      final ip = '$prefix.$host';
+      if (localAddresses.contains(ip)) continue;
+      candidates.add(ip);
+    }
+  }
+
+  final deadline = DateTime.now().add(timeout);
+  const batchSize = 32;
+  for (int i = 0; i < candidates.length; i += batchSize) {
+    if (DateTime.now().isAfter(deadline)) return null;
+    final remaining = deadline.difference(DateTime.now());
+    if (remaining <= Duration.zero) return null;
+
+    final batch = candidates.skip(i).take(batchSize);
+    final perProbeTimeout =
+        remaining < const Duration(milliseconds: 150)
+            ? remaining
+            : const Duration(milliseconds: 150);
+
+    final probes = batch.map(
+      (ip) => _probeHostTcpPort(ip, timeout: perProbeTimeout),
+    );
+    final results = await Future.wait(probes);
+    for (final host in results) {
+      if (host != null) return host;
+    }
+  }
+
+  return null;
+}
+
+Future<InternetAddress?> _probeHostTcpPort(
+  String ip, {
+  required Duration timeout,
+}) async {
+  if (timeout <= Duration.zero) return null;
+  try {
+    final socket = await Socket.connect(
+      ip,
+      kLanGamePort,
+      timeout: timeout,
+    );
+    socket.destroy();
+    return InternetAddress(ip);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Collect all local IPv4 addresses (used to filter self-discovery).
+Future<Set<String>> _collectLocalAddresses() async {
+  final addrs = <String>{'127.0.0.1'};
+  try {
+    final interfaces = await NetworkInterface.list(
+      type: InternetAddressType.IPv4,
+    );
+    for (final iface in interfaces) {
+      for (final addr in iface.addresses) {
+        addrs.add(addr.address);
+      }
+    }
+  } catch (_) {}
+  return addrs;
+}
+
+/// Build the list of addresses to send discovery probes / beacons to.
+/// Includes the multicast group and subnet-directed broadcast addresses
+/// derived from every active WiFi/ethernet interface.
+Future<List<InternetAddress>> _collectBroadcastTargets() async {
+  final targets = <InternetAddress>[
+    InternetAddress(_kMulticastGroup),
+    InternetAddress('255.255.255.255'),
+  ];
+  try {
+    final interfaces = await NetworkInterface.list(
+      type: InternetAddressType.IPv4,
+    );
+    for (final iface in interfaces) {
+      for (final addr in iface.addresses) {
+        // Derive a /24 subnet broadcast (covers most home/office networks).
+        final parts = addr.address.split('.');
+        if (parts.length == 4) {
+          final subnetBroadcast = '${parts[0]}.${parts[1]}.${parts[2]}.255';
+          final target = InternetAddress(subnetBroadcast);
+          if (!targets.any((t) => t.address == target.address)) {
+            targets.add(target);
+          }
+        }
+      }
+    }
+  } catch (_) {
+    // Fall back to limited broadcast only.
+  }
+  return targets;
 }
 
 class LanHostServer {
@@ -150,6 +304,8 @@ class LanHostServer {
   final RawDatagramSocket _discoverySocket;
   final Map<Socket, int> _socketToPlayer = <Socket, int>{};
   final List<StreamSubscription> _socketSubscriptions = <StreamSubscription>[];
+  List<InternetAddress> _broadcastTargets = const [];
+  Timer? _beaconTimer;
   bool _closed = false;
 
   LanHostServer._(
@@ -160,6 +316,7 @@ class LanHostServer {
     connectedPlayerIds.add(localPlayerId);
     _listenForDiscovery();
     _listenForClients();
+    _startBeacon();
   }
 
   static Future<LanHostServer> start({
@@ -178,16 +335,55 @@ class LanHostServer {
       reusePort: true,
     );
     discovery.broadcastEnabled = true;
+    // Join multicast on every available interface for reliable reception.
     try {
       discovery.joinMulticast(InternetAddress(_kMulticastGroup));
-    } catch (_) {
-      // Best effort: multicast join may fail on some networks.
-    }
+    } catch (_) {}
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      );
+      for (final iface in interfaces) {
+        try {
+          discovery.joinMulticast(
+            InternetAddress(_kMulticastGroup),
+            iface,
+          );
+        } catch (_) {}
+      }
+    } catch (_) {}
     return LanHostServer._(
       server,
       discovery,
       localPlayerId: localPlayerId,
     );
+  }
+
+  /// Periodically broadcast a host beacon so clients that cannot send
+  /// broadcasts (common on physical iOS) can still discover us passively.
+  void _startBeacon() {
+    _collectBroadcastTargets().then((targets) {
+      _broadcastTargets = targets;
+      if (_closed) return;
+      // Send first beacon immediately.
+      _sendBeacon();
+      _beaconTimer = Timer.periodic(
+        const Duration(milliseconds: 500),
+        (_) => _sendBeacon(),
+      );
+    });
+  }
+
+  void _sendBeacon() {
+    if (_closed) return;
+    final payload = utf8.encode(
+      jsonEncode({'t': 'host', 'port': kLanGamePort}),
+    );
+    for (final target in _broadcastTargets) {
+      try {
+        _discoverySocket.send(payload, target, kLanDiscoveryPort);
+      } catch (_) {}
+    }
   }
 
   void _listenForDiscovery() {
@@ -196,8 +392,14 @@ class LanHostServer {
       if (event != RawSocketEvent.read) return;
       Datagram? datagram;
       while ((datagram = _discoverySocket.receive()) != null) {
-        final text = utf8.decode(datagram!.data);
+        String text;
+        try {
+          text = utf8.decode(datagram!.data);
+        } catch (_) {
+          continue;
+        }
         if (text != _kDiscoverToken) continue;
+        // Reply directly to the client that probed us.
         final reply = jsonEncode({'t': 'host', 'port': kLanGamePort});
         _discoverySocket.send(
           utf8.encode(reply),
@@ -317,6 +519,7 @@ class LanHostServer {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _beaconTimer?.cancel();
     for (final sub in _socketSubscriptions) {
       await sub.cancel();
     }

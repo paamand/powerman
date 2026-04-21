@@ -44,7 +44,9 @@ class _MenuScreenState extends State<MenuScreen> {
   String? _lanStatus;
   Timer? _discoveryTimer;
   InternetAddress? _discoveredHost;
+  DateTime? _discoveredHostLastSeen;
   bool _discovering = false;
+  static const Duration _hostPresenceTtl = Duration(seconds: 12);
 
   @override
   void initState() {
@@ -61,7 +63,7 @@ class _MenuScreenState extends State<MenuScreen> {
   void _startDiscoveryLoop() {
     _runDiscoveryScan();
     _discoveryTimer = Timer.periodic(
-      const Duration(seconds: 3),
+      const Duration(seconds: 2),
       (_) => _runDiscoveryScan(),
     );
   }
@@ -71,13 +73,32 @@ class _MenuScreenState extends State<MenuScreen> {
     _discovering = true;
     try {
       final host = await discoverLanHost(
-        timeout: const Duration(milliseconds: 1500),
+        timeout: const Duration(seconds: 2),
       );
       if (!mounted) return;
-      if (host != _discoveredHost) {
-        setState(() {
-          _discoveredHost = host;
-        });
+      if (host != null) {
+        if (host != _discoveredHost) {
+          setState(() {
+            _discoveredHost = host;
+            _discoveredHostLastSeen = DateTime.now();
+          });
+        } else {
+          _discoveredHostLastSeen = DateTime.now();
+        }
+        return;
+      }
+
+      // Keep the last seen host for a short TTL to avoid false negatives
+      // from a single missed UDP beacon/probe reply.
+      if (_discoveredHost != null && _discoveredHostLastSeen != null) {
+        final isStale =
+            DateTime.now().difference(_discoveredHostLastSeen!) > _hostPresenceTtl;
+        if (isStale) {
+          setState(() {
+            _discoveredHost = null;
+            _discoveredHostLastSeen = null;
+          });
+        }
       }
     } catch (_) {
       // Ignore discovery errors.
@@ -152,10 +173,6 @@ class _MenuScreenState extends State<MenuScreen> {
                     style: TextStyle(fontSize: 12),
                   ),
                   Text('TAP   →  Drop bomb', style: TextStyle(fontSize: 12)),
-                  Text(
-                    'HOLD  →  Trigger super weapon',
-                    style: TextStyle(fontSize: 12),
-                  ),
                   SizedBox(height: 4),
                   Text(
                     'Collect crates for power-ups!',
@@ -177,12 +194,46 @@ class _MenuScreenState extends State<MenuScreen> {
     );
   }
 
-  void _onLanTap() {
+  Future<void> _onLanTap() async {
+    if (_lanBusy) return;
+
     if (_discoveredHost != null) {
-      _joinLanGame(_discoveredHost!);
-    } else {
-      _hostLanGame();
+      await _joinLanGame(_discoveredHost!);
+      return;
     }
+
+    // Before becoming host, do a final blocking discovery pass. This reduces
+    // accidental split-lobby cases caused by transient missed beacons.
+    setState(() {
+      _lanBusy = true;
+      _lanStatus = 'Looking for LAN game...';
+    });
+
+    try {
+      final host = await discoverLanHostWithTcpFallback(
+        udpTimeout: const Duration(seconds: 2),
+        tcpScanTimeout: const Duration(seconds: 3),
+      );
+      if (!mounted) return;
+
+      if (host != null) {
+        setState(() {
+          _discoveredHost = host;
+          _discoveredHostLastSeen = DateTime.now();
+          _lanBusy = false;
+        });
+        await _joinLanGame(host);
+        return;
+      }
+    } catch (_) {
+      // Ignore errors and fall back to hosting.
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _lanBusy = false;
+    });
+    await _hostLanGame();
   }
 
   Future<void> _hostLanGame() async {
@@ -247,6 +298,7 @@ class _MenuScreenState extends State<MenuScreen> {
       setState(() {
         _lanStatus = 'Host unavailable. Try again.';
         _discoveredHost = null;
+        _discoveredHostLastSeen = null;
       });
     } finally {
       if (mounted) {

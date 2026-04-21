@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 
 /// A single player's control area overlay.
-/// Drag = move, tap = bomb, long-press = super weapon.
+/// Drag = move, tap = bomb
 /// Direction is passed raw (no rotation) — drag "up" always moves up in game space.
 class PlayerControlArea extends StatefulWidget {
   final int playerId;
